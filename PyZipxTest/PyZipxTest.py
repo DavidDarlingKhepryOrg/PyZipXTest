@@ -6,18 +6,23 @@ import py7zlib
 import subprocess
 import zipfile
 
-if platform.system() != 'Windows':
-    p7zipPgmPath = '7z'
-else:
-    p7zipPgmPath = os.path.abspath('/Program Files/7-Zip/7z.exe')
+zipFileNamesList = []
+zipFileNamesList.append('./testFiles/test47z.7z')
+zipFileNamesList.append('./testFiles/test4zipx.zipx')
+zipFileNamesList.append('./testFiles/test4zip.zip')
+# zipFileNamesList.append('./testFiles/CID-Synonym-filtered.zipx')
+# zipFileNamesList.append('./testFiles/CID-Synonym-filtered.7z')
 
-
-zipFileNamesList = ['./testFiles/test47z.7z','./testFiles/test4zipx.zipx', './testFiles/test4zip.zip']
 tmpZipPath = './OutputFiles'
 
 def main():
     
     errStr = None
+     
+    if platform.system() != 'Windows':
+        p7zipPgmPath = '7z'
+    else:
+        p7zipPgmPath = os.path.abspath('/Program Files/7-Zip/7z.exe')
     
     tmpZipPathExpanded = getPathExpanded(tmpZipPath,
                                          parentPath=None,
@@ -32,76 +37,185 @@ def main():
         print('')
         print('---------------------------------------------')
         print('zipFileNameExpanded: %s' % zipFileNameExpanded)
+    
+        tmpZipPathExpanded, errStr = zip2dirX(zipFileNameExpanded,
+                                              tmpZipPathExpanded,
+                                              useSubProcessCall=True,
+                                              p7zipPgmPath=p7zipPgmPath,
+                                              isTestMode=True,
+                                              pgmLogger=logging)
+
+    return                    
+
+    
+# Unzip a 7Z, ZIP, or ZIPX archives to a target folder
+
+def zip2dirX(zipFileName,
+             tmpZipPath,
+             useSubProcessCall=True,
+             p7zipPgmPath='7z' if platform.system() != 'Windows' else os.path.abspath('/Program Files/7-Zip/7z.exe'),
+             isTestMode=False,
+             pgmLogger=None):
         
-        if os.path.exists(zipFileNameExpanded):
-            if os.path.isfile(zipFileNameExpanded):
-                pieces = os.path.splitext(zipFileNameExpanded)
-                if len(pieces) == 2:
-                    if pieces[1].lower() in ['.7z']:
+    errStr = None
+    
+    tmpZipPathExpanded = getPathExpanded(tmpZipPath,
+                                         parentPath=None,
+                                         pgmLogger=pgmLogger)
+    
+    if isTestMode:
+        print('tmpZipPathExpanded: %s' % tmpZipPathExpanded)
+    
+    zipFileNameExpanded = getPathExpanded(zipFileName,
+                                          parentPath = None,
+                                          pgmLogger=pgmLogger)
+    
+    if isTestMode:
+        print('')
+        print('---------------------------------------------')
+        print('zipFileNameExpanded: %s' % zipFileNameExpanded)
+    
+    if os.path.exists(zipFileNameExpanded):
+        if os.path.isfile(zipFileNameExpanded):
+            pieces = os.path.splitext(zipFileNameExpanded)
+            if len(pieces) == 2:
+                if pieces[1].lower() in ['.7z']:
+                    try:
                         with io.open(zipFileNameExpanded, 'rb') as fp:
                             archive7z = py7zlib.Archive7z(fp)
                             # obtain the archive's manifest of file names
                             fileNameManifestList = archive7z.getnames() 
                             # if it's a 7-Zip file
                             if len(fileNameManifestList) > 0:
-                                # print the file manifest
-                                # list fileName-by-fileName
-                                for fileName in fileNameManifestList:
-                                    print('7-Zip Manifest file name: %s' % fileName)
-                                # decompress the archive to a temporary folder
-                                subprocess.call([p7zipPgmPath, 'x', '-y', '-o%s' % tmpZipPathExpanded, zipFileNameExpanded], shell=False)
-                                # tmpZipPathExpanded, errStr = py7zip2dir(archive7z, tmpZipPath, pgmLogger=logging)
-                                if errStr == None:
-                                    pass
-                                    # examine unzipped file contents
+                                if isTestMode:
+                                    for fileName in fileNameManifestList:
+                                        print('7-Zip manifest file name: %s' % fileName)
                             else:
-                                logging.error('Specified file "%s" was not recognized as a "7ZIP" archive' % zipFileNameExpanded)
-                    elif pieces[1].lower() in ['.zipx']:
-                        if zipfile.is_zipfile(zipFileNameExpanded):
-                            # obtain the archive's manifest of file names
-                            fileNameManifestList = zipfile.ZipFile(zipFileNameExpanded).namelist()
-                            if len(fileNameManifestList) > 0:
-                                # print the file manifest
-                                # list fileName-by-fileName
-                                for fileName in fileNameManifestList:
-                                    print('ZIP Manifest file name: %s' % fileName)
-                                # decompress the archive to a temporary folder
+                                errStr = 'Specified 7Z archive file "%s" has an empty manifest' % zipFileNameExpanded
+                                pgmLogger.error(errStr)
+                    except Exception as e:
+                        errStr = 'Specified 7Z archive file "%s" was not recognized as a valid "7ZIP" format' % zipFileNameExpanded
+                        pgmLogger.error(errStr)
+                        errStr = str(e)
+                        pgmLogger.error(errStr)
+                    if errStr == None:
+                        if useSubProcessCall:
+                            try:
                                 subprocess.call([p7zipPgmPath, 'e', '-y', '-o%s' % tmpZipPathExpanded, zipFileNameExpanded], shell=False)
-                                if errStr == None:
-                                    pass
-                                    # examine unzipped file contents
-                            else:
-                                logging.error('Zip file "%s" manifest was empty' % zipFileNameExpanded)
+                            except Exception as e:
+                                errStr = 'Decompression of ZIP archive file "%s" via subprocess call of 7-Zip program failed' % zipFileNameExpanded
+                                pgmLogger.error(errStr)
+                                errStr = str(e)
+                                pgmLogger.error(errStr)
                         else:
-                            logging.error('Specified file "%s" was not recognized as a "ZIP" archive' % zipFileNameExpanded)
-                    elif pieces[1].lower() in ['.zip']:
+                            try:
+                                with io.open(zipFileNameExpanded, 'rb') as fp:
+                                    archive7z = py7zlib.Archive7z(fp)
+                                    # obtain the archive's manifest of file names
+                                    fileNameManifestList = archive7z.getnames()
+                                    # extract each file from the manifest 
+                                    for fileName in fileNameManifestList:
+                                        try:
+                                            outfilename = os.path.join(tmpZipPathExpanded, fileName)
+                                            outdir = os.path.dirname(outfilename)
+                                            if not os.path.exists(outdir):
+                                                os.makedirs(outdir)
+                                            with io.open(outfilename, 'wb') as outfile:
+                                                outfile.write(archive7z.getmember(fileName).read())
+                                            if isTestMode:
+                                                print ('outFileName: "%s"' % outfilename)
+                                        except Exception as e:
+                                            errStr = str('Expansion of manifest file "%s" within 7Z archive file "%s" failed' % (fileName, zipFileNameExpanded))
+                                            pgmLogger.error(errStr)
+                                            errStr = str(e)
+                                            pgmLogger.error(errStr)
+                            except Exception as e:
+                                errStr = 'Decompression of 7Z archive file "%s" via "py7zlib" package failed' % zipFileNameExpanded
+                                pgmLogger.error()
+                                errStr = str(e)
+                                pgmLogger.error(errStr)
+                elif pieces[1].lower() in ['.zipx']:
+                    try:
                         if zipfile.is_zipfile(zipFileNameExpanded):
                             # obtain the archive's manifest of file names
                             fileNameManifestList = zipfile.ZipFile(zipFileNameExpanded).namelist()
                             if len(fileNameManifestList) > 0:
-                                # print the file manifest
-                                # list fileName-by-fileName
-                                for fileName in fileNameManifestList:
-                                    print('ZIP Manifest file name: %s' % fileName)
-                                # decompress the archive to a temporary folder
-                                # tmpZipPathExpanded, errStr = zip2dir(zipFileNameExpanded, tmpZipPath, pgmLogger=logging)
-                                subprocess.call([p7zipPgmPath, 'e', '-r', '-y', '-o%s' % tmpZipPathExpanded, zipFileNameExpanded], shell=False)
-                                if errStr == None:
-                                    pass
-                                    # examine unzipped file contents
+                                if isTestMode:
+                                    for fileName in fileNameManifestList:
+                                        print('ZIP Manifest file name: %s' % fileName)
                             else:
-                                logging.error('Zip file "%s" manifest was empty' % zipFileNameExpanded)
+                                errStr = 'Specified ZIPX archive file "%s" has an empty manifest' % zipFileNameExpanded
+                                pgmLogger.error(errStr)
                         else:
-                            logging.error('Specified file "%s" was not recognized as a "ZIP" archive' % zipFileNameExpanded)
-                    else:
-                        logging.error('Specified file "%s" is not in an ARAPCD-supported archival format (e.g. .7z, .zip, .zipx)')
+                            errStr = 'Specified ZIPX archive file "%s" was not recognized as a valid "ZIPX" format' % zipFileNameExpanded
+                            pgmLogger.error(errStr)
+                    except Exception as e:
+                        errStr = 'Specified ZIPX archive file "%s" was not recognized as a valid "ZIPX" format' % zipFileNameExpanded
+                        pgmLogger.error(errStr)
+                        errStr = str(e)
+                        pgmLogger.error(errStr)
+                    if errStr == None:
+                        try:
+                            # decompress the archive to a temporary folder
+                            subprocess.call([p7zipPgmPath, 'e', '-y', '-o%s' % tmpZipPathExpanded, zipFileNameExpanded], shell=False)
+                        except Exception as e:
+                            errStr = str(e)
+                            pgmLogger.error('Decompression of ZIPX archive file via subprocess call of 7-Zip program failed')
+                            pgmLogger.error(errStr)
+                elif pieces[1].lower() in ['.zip']:
+                    try:
+                        if zipfile.is_zipfile(zipFileNameExpanded):
+                            # obtain the archive's manifest of file names
+                            fileNameManifestList = zipfile.ZipFile(zipFileNameExpanded).namelist()
+                            if len(fileNameManifestList) > 0:
+                                if isTestMode:
+                                    for fileName in fileNameManifestList:
+                                        print('ZIP Manifest file name: %s' % fileName)
+                            else:
+                                errStr = 'Specified ZIP archive file "%s" has an empty manifest' % zipFileNameExpanded
+                                pgmLogger.error(errStr)
+                        else:
+                            errStr = 'Specified ZIP archive file "%s" was not recognized as a valid "ZIP" format' % zipFileNameExpanded
+                            pgmLogger.error(errStr)
+                    except Exception as e:
+                        errStr = 'Specified ZIP archive file "%s" was not recognized as a valid "ZIP" format' % zipFileNameExpanded
+                        pgmLogger.error(errStr)
+                        errStr = str(e)
+                        pgmLogger.error(errStr)
+                    if errStr == None:
+                        if useSubProcessCall:
+                            try:
+                                subprocess.call([p7zipPgmPath, 'e', '-y', '-o%s' % tmpZipPathExpanded, zipFileNameExpanded], shell=False)
+                            except Exception as e:
+                                errStr = 'Decompression of ZIP archive file "%s" via subprocess call of 7-Zip program failed' % zipFileNameExpanded
+                                pgmLogger.error(errStr)
+                                errStr = str(e)
+                                pgmLogger.error(errStr)
+                        else:
+                            try:
+                                # extract all of the files/folders
+                                # within the archive file to the target folder
+                                with zipfile.ZipFile(zipFileNameExpanded, "r") as z:
+                                    z.extractall(tmpZipPathExpanded)
+                            except Exception as e:
+                                errStr = 'Decompression of ZIP archive file "%s" via "zipfile" package failed' % zipFileNameExpanded
+                                pgmLogger.error(errStr)
+                                errStr = str(e)
+                                pgmLogger.error(errStr)
                 else:
-                    logging.error('Nominal zip file "%s" does not have an extension' % zipFileNameExpanded)
+                    errStr = 'Nominal archive file "%s" is not in an ARAPCD-supported archival format (.7z, .zip, .zipx)'
+                    pgmLogger.error(errStr)
             else:
-                logging.error('Specified file "%s" was not recognized as a valid file' % zipFileNameExpanded)
+                errStr = 'Nominal archive file "%s" does not have an extension' % zipFileNameExpanded
+                pgmLogger.error(errStr)
         else:
-            logging.error('Specified file: "%s" does not exist' % zipFileNameExpanded)
-    return                    
+            errStr = 'Specified archive file "%s" was not recognized as a valid file' % zipFileNameExpanded
+            pgmLogger.error(errStr)
+    else:
+        errStr = 'Specified archive file: "%s" does not exist' % zipFileNameExpanded
+        pgmLogger.error(errStr)
+            
+    return tmpZipPathExpanded, errStr                    
 
 
 # =============================================================================    
