@@ -10,8 +10,8 @@ zipFileNamesList = []
 zipFileNamesList.append('./testFiles/test47z.7z')
 zipFileNamesList.append('./testFiles/test4zipx.zipx')
 zipFileNamesList.append('./testFiles/test4zip.zip')
-# zipFileNamesList.append('./testFiles/CID-Synonym-filtered.zipx')
-# zipFileNamesList.append('./testFiles/CID-Synonym-filtered.7z')
+# zipFileNamesList.append('/home/fracking/data/PubChem/CID-Synonym-filtered.zipx')
+# zipFileNamesList.append('/home/fracking/data/PubChem/CID-Synonym-filtered.7z')
 
 tmpZipPath = './OutputFiles'
 
